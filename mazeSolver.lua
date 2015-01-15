@@ -9,8 +9,6 @@ return function(maze)
 	local solve = function(startingPoint)
 		local startingPoint = startingPoint or {maze.entry.x, maze.entry.y}
 		local exitPoint = {maze.exit.x, maze.exit.y}
-		local currentPosition = startingPoint
-		local visitedCells = map2D(false)
 
 		local neighbordLocations = {
 			[0] = {0, 1},
@@ -30,8 +28,7 @@ return function(maze)
 							local neighbourLocation = neighbordLocations[i] 
 							local position1 = {position0[1] + neighbourLocation[1], position0[2] + neighbourLocation[2]}
 							if (position1[1]>=1 and position1[1] <= maze.width and position1[2]>=1 and position1[2] <= maze.height) then
-								local cell = map[position1]
-								if fn(cell, position1) then
+								if fn(map[position1], position1) then
 									table.insert(neighbours, position1)
 								end
 							end
@@ -44,40 +41,48 @@ return function(maze)
 			return neighbours
 		end
 
-		visitedCells[startingPoint] = true
 
 		return coroutine.wrap(function()
 			local path = stack()
+			local currentPosition = startingPoint
+			local visitedCells = map2D(false)
 
-			local function checkCell(currentPosition)
+			local cellTestFn = function(cell, position)
+				return (cell.type >= 1) and (not visitedCells[position])
+			end
+
+			local function findPath(currentPosition)
 				visitedCells[currentPosition] = true
-				-- is this an exit?
-				if currentPosition[1] == exitPoint[1] and currentPosition[2] == exitPoint[2] then
-					--path.push(currentPosition)
-					return true, currentPosition
-				else
-					local possiblePaths = neighbours(currentPosition, function(cell, position)
-						return (cell.type >= 1) and (not visitedCells[position])
-					end)
+				path.push(currentPosition)
 
-					-- is this a dead end?
-					if #possiblePaths>0 then
-						for _, localPosition in ipairs(possiblePaths) do
-							coroutine.yield(false, localPosition)
-							local result, possiblePosition = checkCell(localPosition)
-							if result then
-								path.push(possiblePosition)
-								return true, currentPosition
-							end
-						end
-					else
-						coroutine.yield(false, 0)
-						return false
-					end
-		    	end
+				while true do
+					local currentCell = maze.map[currentPosition]
+
+    				-- is this an exit?
+    				if currentCell and (currentCell.type == 3 or currentCell.type == 4) then
+						break
+    				else
+    					local possibleCells = neighbours(currentPosition, cellTestFn)
+
+    					-- is this a dead end?
+    					if #possibleCells>0 then
+    						currentPosition = possibleCells[1]
+							
+							visitedCells[currentPosition] = true
+							path.push(currentPosition)
+
+   							coroutine.yield(false, currentPosition, #possibleCells)
+    					elseif not path.empty() then
+    						currentPosition = path.pop()
+    						--coroutine.yield(false, currentPosition)
+    					else
+    						break
+    					end
+    		    	end
+    			end
 		    end
 		    
-		    xpcall(checkCell, function(msg)
+		    xpcall(findPath, function(msg)
 				print(msg)
 				print(debug.traceback())
 		    end,currentPosition)
